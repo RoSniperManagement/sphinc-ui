@@ -11587,10 +11587,37 @@ function Starlight:CreateWindow(WindowSettings)
 			updateCam()
 		end
 
+		-- Accents.Main is a ColorSequence on built-in sliders; map to a solid Color3 for Frame fills / strokes.
+		local function bindAccentSolid(inst: Instance, propName: string)
+			local function apply()
+				local v = GetNestedValue(Starlight.CurrentTheme, "Accents.Main")
+				local c: Color3
+				if typeof(v) == "ColorSequence" then
+					local kps = v.Keypoints
+					if #kps >= 2 then
+						c = kps[2].Value
+					elseif #kps >= 1 then
+						c = kps[1].Value
+					else
+						c = Color3.fromRGB(99, 102, 241)
+					end
+				elseif typeof(v) == "Color3" then
+					c = v
+				else
+					c = Color3.fromRGB(99, 102, 241)
+				end
+				pcall(function()
+					(inst :: any)[propName] = c
+				end)
+			end
+			themeEvent.Event:Connect(apply)
+			apply()
+		end
+
 		local axisMeta = {
-			{ axis = "X", label = "Width (X)", color = Color3.fromRGB(220, 60, 60) },
-			{ axis = "Y", label = "Height (Y)", color = Color3.fromRGB(60, 180, 60) },
-			{ axis = "Z", label = "Depth (Z)", color = Color3.fromRGB(60, 100, 220) },
+			{ axis = "X", label = "Width (X)" },
+			{ axis = "Y", label = "Height (Y)" },
+			{ axis = "Z", label = "Depth (Z)" },
 		}
 
 		for idx, meta in ipairs(axisMeta) do
@@ -11604,9 +11631,9 @@ function Starlight:CreateWindow(WindowSettings)
 			lab.TextSize = 11
 			lab.TextXAlignment = Enum.TextXAlignment.Left
 			lab.Text = meta.label
-			lab.TextColor3 = meta.color
 			lab.ZIndex = 26
 			lab.Parent = control
+			ThemeMethods.bindTheme(lab, "TextColor3", "Foregrounds.Light")
 
 			local track = Instance.new("Frame")
 			track.Name = "Track_" .. axis
@@ -11618,7 +11645,7 @@ function Starlight:CreateWindow(WindowSettings)
 			local trC = Instance.new("UICorner")
 			trC.CornerRadius = UDim.new(0, 3)
 			trC.Parent = track
-			ThemeMethods.bindTheme(track, "BackgroundColor3", "Backgrounds.Medium")
+			ThemeMethods.bindTheme(track, "BackgroundColor3", "Backgrounds.Dark")
 
 			local fill = Instance.new("Frame")
 			fill.BorderSizePixel = 0
@@ -11628,22 +11655,22 @@ function Starlight:CreateWindow(WindowSettings)
 			local fC = Instance.new("UICorner")
 			fC.CornerRadius = UDim.new(0, 3)
 			fC.Parent = fill
-			fill.BackgroundColor3 = meta.color
+			bindAccentSolid(fill, "BackgroundColor3")
 
 			local knob = Instance.new("Frame")
 			knob.Size = UDim2.new(0, 14, 0, 14)
 			knob.Position = UDim2.new(0, -7, 0.5, -7)
 			knob.BorderSizePixel = 0
 			knob.ZIndex = 28
-			knob.BackgroundColor3 = Color3.new(1, 1, 1)
 			knob.Parent = track
 			local kC = Instance.new("UICorner")
 			kC.CornerRadius = UDim.new(1, 0)
 			kC.Parent = knob
+			ThemeMethods.bindTheme(knob, "BackgroundColor3", "Foregrounds.Light")
 			local ks = Instance.new("UIStroke")
 			ks.Thickness = 2
-			ks.Color = meta.color
 			ks.Parent = knob
+			bindAccentSolid(ks, "Color")
 
 			local valLab = Instance.new("TextLabel")
 			valLab.Size = UDim2.new(0, 52, 0, 22)
@@ -11652,19 +11679,19 @@ function Starlight:CreateWindow(WindowSettings)
 			valLab.Font = Enum.Font.GothamBold
 			valLab.TextSize = 11
 			valLab.Text = "1.00x"
-			valLab.TextColor3 = meta.color
 			valLab.ZIndex = 26
 			valLab.Parent = control
 			local vC = Instance.new("UICorner")
 			vC.CornerRadius = UDim.new(0, 4)
 			vC.Parent = valLab
 			ThemeMethods.bindTheme(valLab, "BackgroundColor3", "Backgrounds.Dark")
+			ThemeMethods.bindTheme(valLab, "TextColor3", "Foregrounds.Light")
 
 			st.AxisSliders[axis] = { track = track, fill = fill, knob = knob }
 			st.AxisValueLabels[axis] = valLab
 
 			local dragging = false
-			local minVal, maxVal, step = 1, 2, 0.05
+			local minVal, maxVal, step = 1, 2, 0.01
 			local function valToAlpha(v: number)
 				return math.clamp((v - minVal) / (maxVal - minVal), 0, 1)
 			end
