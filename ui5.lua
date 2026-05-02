@@ -11247,6 +11247,9 @@ function Starlight:CreateWindow(WindowSettings)
 
 		local dockStroke = Instance.new("UIStroke")
 		dockStroke.Thickness = 1
+		pcall(function()
+			dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		end)
 		dockStroke.Parent = dock
 		ThemeMethods.bindTheme(dock, "BackgroundColor3", "Backgrounds.Dark")
 		ThemeMethods.bindTheme(dockStroke, "Color", "Foregrounds.Dark")
@@ -11262,14 +11265,18 @@ function Starlight:CreateWindow(WindowSettings)
 		mainFrame.BorderSizePixel = 0
 		mainFrame.Parent = dock
 
-		local titleH, ctrlH, pad = 36, 142, 8
+		local titleH, ctrlH, pad = 36, 182, 8
 		local minVpH = 140
 		local titleBar = Instance.new("Frame")
 		titleBar.Name = "TitleBar"
 		titleBar.Size = UDim2.new(1, 0, 0, titleH)
 		titleBar.BorderSizePixel = 0
+		titleBar.ZIndex = 2
 		titleBar.Parent = mainFrame
 		ThemeMethods.bindTheme(titleBar, "BackgroundColor3", "Backgrounds.Medium")
+		local titleBarCorner = Instance.new("UICorner")
+		titleBarCorner.CornerRadius = UDim.new(0, 10)
+		titleBarCorner.Parent = titleBar
 
 		local titleLbl = Instance.new("TextLabel")
 		titleLbl.BackgroundTransparency = 1
@@ -11294,10 +11301,12 @@ function Starlight:CreateWindow(WindowSettings)
 		viewport.Name = "Viewport"
 		viewport.BorderSizePixel = 0
 		viewport.BackgroundTransparency = 0
+		viewport.ClipsDescendants = true
 		viewport.LightColor = Color3.new(1, 1, 1)
 		viewport.Ambient = Color3.fromRGB(140, 140, 160)
 		viewport.LightDirection = Vector3.new(-1, -1, -1).Unit
-		viewport.ZIndex = 2
+		-- Keep below ControlPanel: ViewportFrame compositing can draw over later siblings with close ZIndex.
+		viewport.ZIndex = 1
 		viewport.Parent = mainFrame
 		local vpCorner = Instance.new("UICorner")
 		vpCorner.CornerRadius = UDim.new(0, 8)
@@ -11350,7 +11359,7 @@ function Starlight:CreateWindow(WindowSettings)
 		control.Size = UDim2.new(1, -pad * 2, 0, ctrlH)
 		control.Position = UDim2.new(0, pad, 1, -pad - ctrlH)
 		control.BorderSizePixel = 0
-		control.ZIndex = 3
+		control.ZIndex = 25
 		control.Parent = mainFrame
 		local ctrlCorner = Instance.new("UICorner")
 		ctrlCorner.CornerRadius = UDim.new(0, 8)
@@ -11361,6 +11370,7 @@ function Starlight:CreateWindow(WindowSettings)
 		selTitle.BackgroundTransparency = 1
 		selTitle.Size = UDim2.new(1, -12, 0, 22)
 		selTitle.Position = UDim2.new(0, 8, 0, 6)
+		selTitle.ZIndex = 26
 		selTitle.Font = Enum.Font.GothamBold
 		selTitle.TextSize = 12
 		selTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -11595,6 +11605,7 @@ function Starlight:CreateWindow(WindowSettings)
 			lab.TextXAlignment = Enum.TextXAlignment.Left
 			lab.Text = meta.label
 			lab.TextColor3 = meta.color
+			lab.ZIndex = 26
 			lab.Parent = control
 
 			local track = Instance.new("Frame")
@@ -11602,6 +11613,7 @@ function Starlight:CreateWindow(WindowSettings)
 			track.Size = UDim2.new(1, -160, 0, 6)
 			track.Position = UDim2.new(0, 84, 0, y0 + 8)
 			track.BorderSizePixel = 0
+			track.ZIndex = 26
 			track.Parent = control
 			local trC = Instance.new("UICorner")
 			trC.CornerRadius = UDim.new(0, 3)
@@ -11611,6 +11623,7 @@ function Starlight:CreateWindow(WindowSettings)
 			local fill = Instance.new("Frame")
 			fill.BorderSizePixel = 0
 			fill.Size = UDim2.new(0, 0, 1, 0)
+			fill.ZIndex = 27
 			fill.Parent = track
 			local fC = Instance.new("UICorner")
 			fC.CornerRadius = UDim.new(0, 3)
@@ -11621,7 +11634,7 @@ function Starlight:CreateWindow(WindowSettings)
 			knob.Size = UDim2.new(0, 14, 0, 14)
 			knob.Position = UDim2.new(0, -7, 0.5, -7)
 			knob.BorderSizePixel = 0
-			knob.ZIndex = 2
+			knob.ZIndex = 28
 			knob.BackgroundColor3 = Color3.new(1, 1, 1)
 			knob.Parent = track
 			local kC = Instance.new("UICorner")
@@ -11640,6 +11653,7 @@ function Starlight:CreateWindow(WindowSettings)
 			valLab.TextSize = 11
 			valLab.Text = "1.00x"
 			valLab.TextColor3 = meta.color
+			valLab.ZIndex = 26
 			valLab.Parent = control
 			local vC = Instance.new("UICorner")
 			vC.CornerRadius = UDim.new(0, 4)
@@ -11780,6 +11794,7 @@ function Starlight:CreateWindow(WindowSettings)
 		resetPart.TextSize = 11
 		resetPart.Text = "Reset Part"
 		resetPart.BorderSizePixel = 0
+		resetPart.ZIndex = 26
 		resetPart.Parent = control
 		local rpC = Instance.new("UICorner")
 		rpC.CornerRadius = UDim.new(0, 6)
@@ -11794,6 +11809,7 @@ function Starlight:CreateWindow(WindowSettings)
 		resetAll.TextSize = 11
 		resetAll.Text = "Reset All"
 		resetAll.BorderSizePixel = 0
+		resetAll.ZIndex = 26
 		resetAll.Parent = control
 		local raC = Instance.new("UICorner")
 		raC.CornerRadius = UDim.new(0, 6)
