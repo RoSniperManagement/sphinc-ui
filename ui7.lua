@@ -11280,7 +11280,7 @@ function Starlight:CreateWindow(WindowSettings)
 
 		local titleLbl = Instance.new("TextLabel")
 		titleLbl.BackgroundTransparency = 1
-		titleLbl.Size = UDim2.new(1, -52, 1, 0)
+		titleLbl.Size = UDim2.new(1, -40, 1, 0)
 		titleLbl.Position = UDim2.new(0, 10, 0, 0)
 		titleLbl.Font = Enum.Font.GothamBold
 		titleLbl.TextSize = 14
@@ -11289,12 +11289,33 @@ function Starlight:CreateWindow(WindowSettings)
 		titleLbl.Parent = titleBar
 		ThemeMethods.bindTheme(titleLbl, "TextColor3", "Foregrounds.Light")
 
-		local closeBtn = mainWindow.Content.Topbar.Controls.Close:Clone()
-		closeBtn.Size = UDim2.new(0, 28, 0, 28)
-		closeBtn.Position = UDim2.new(1, -32, 0.5, -14)
+		local closeBtn = Instance.new("TextButton")
+		closeBtn.Name = "Close"
+		closeBtn.AutoButtonColor = false
+		closeBtn.BorderSizePixel = 0
+		closeBtn.Size = UDim2.fromOffset(24, 24)
+		closeBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+		closeBtn.Position = UDim2.new(1, -16, 0.5, 0)
+		closeBtn.ZIndex = 5
+		closeBtn.Text = "✕"
+		closeBtn.TextSize = 14
+		closeBtn.Font = Enum.Font.GothamBold
+		closeBtn.TextXAlignment = Enum.TextXAlignment.Center
+		closeBtn.TextYAlignment = Enum.TextYAlignment.Center
 		closeBtn.Parent = titleBar
-		pcall(function()
-			closeBtn.AutoButtonColor = true
+		local closeCorner = Instance.new("UICorner")
+		closeCorner.CornerRadius = UDim.new(1, 0)
+		closeCorner.Parent = closeBtn
+		ThemeMethods.bindTheme(closeBtn, "BackgroundColor3", "Backgrounds.Dark")
+		ThemeMethods.bindTheme(closeBtn, "TextColor3", "Foregrounds.Medium")
+		closeBtn.MouseEnter:Connect(function()
+			closeBtn.TextColor3 = GetNestedValue(Starlight.CurrentTheme, "Foregrounds.Light")
+			closeBtn.BackgroundTransparency = 0.12
+		end)
+		closeBtn.MouseLeave:Connect(function()
+			closeBtn.TextColor3 = GetNestedValue(Starlight.CurrentTheme, "Foregrounds.Medium")
+			closeBtn.BackgroundColor3 = GetNestedValue(Starlight.CurrentTheme, "Backgrounds.Dark")
+			closeBtn.BackgroundTransparency = 0
 		end)
 
 		local viewport = Instance.new("ViewportFrame")
