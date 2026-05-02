@@ -11230,6 +11230,7 @@ function Starlight:CreateWindow(WindowSettings)
 		mainFrame.Parent = dock
 
 		local titleH, ctrlH, pad = 36, 142, 8
+		local minVpH = 140
 		local titleBar = Instance.new("Frame")
 		titleBar.Name = "TitleBar"
 		titleBar.Size = UDim2.new(1, 0, 0, titleH)
@@ -11344,12 +11345,19 @@ function Starlight:CreateWindow(WindowSettings)
 			ClonedChar = nil :: Model?,
 		}
 
-		local function layoutFrames()
-			local h = math.max(320, mw.AbsoluteSize.Y)
-			local vpH = math.max(140, h - titleH - ctrlH - pad * 3)
+		local function layoutFrames(): number
+			local mwH = mw.AbsoluteSize.Y
+			-- Prefer real window height; when Y is still 0 (first frame / unlaid GUI), reserve space for stacked UI.
+			local baseH = mwH > 1 and mwH or (titleH + pad + minVpH + pad + ctrlH + pad)
+			local vpBudget = baseH - titleH - ctrlH - pad * 3
+			local vpH = math.max(minVpH, vpBudget)
+			local stackedH = titleH + pad + vpH + pad + ctrlH
+			local dockH = math.max(baseH, stackedH)
+
 			viewport.Position = UDim2.new(0, pad, 0, titleH + pad)
 			viewport.Size = UDim2.new(1, -pad * 2, 0, vpH)
 			control.Position = UDim2.new(0, pad, 0, titleH + pad + vpH + pad)
+			return dockH
 		end
 
 		local function updateCam()
@@ -11802,9 +11810,29 @@ function Starlight:CreateWindow(WindowSettings)
 			if not shouldShow then
 				return
 			end
-			dock.Size = UDim2.new(0, w, 0, mw.AbsoluteSize.Y)
-			dock.Position = UDim2.new(0, mw.AbsolutePosition.X + mw.AbsoluteSize.X + gap, 0, mw.AbsolutePosition.Y)
-			layoutFrames()
+			local dockH = layoutFrames()
+			dock.Size = UDim2.new(0, w, 0, dockH)
+			dock.Position =
+				UDim2.new(0, mw.AbsolutePosition.X + mw.AbsoluteSize.X + gap, 0, mw.AbsolutePosition.Y)
+		end
+
+		local function scheduleDeferredRelayout()
+			task.defer(function()
+				if dock.Parent then
+					syncDock()
+					updateCam()
+				end
+			end)
+			local hbConn: RBXScriptConnection?
+			hbConn = RunService.Heartbeat:Connect(function()
+				if hbConn then
+					hbConn:Disconnect()
+				end
+				if dock.Parent then
+					syncDock()
+					updateCam()
+				end
+			end)
 		end
 
 		table.insert(syncConns, mw:GetPropertyChangedSignal("AbsolutePosition"):Connect(syncDock))
@@ -11822,9 +11850,9 @@ function Starlight:CreateWindow(WindowSettings)
 		end)
 
 		buildMannequin()
-		layoutFrames()
 		syncDock()
 		updateCam()
+		scheduleDeferredRelayout()
 
 		return {
 			Root = dock,
@@ -11832,9 +11860,9 @@ function Starlight:CreateWindow(WindowSettings)
 			Open = function()
 				userWantsOpen = true
 				buildMannequin()
-				layoutFrames()
 				updateCam()
 				syncDock()
+				scheduleDeferredRelayout()
 			end,
 			Close = function()
 				userWantsOpen = false
@@ -11844,9 +11872,9 @@ function Starlight:CreateWindow(WindowSettings)
 				userWantsOpen = not userWantsOpen
 				if userWantsOpen then
 					buildMannequin()
-					layoutFrames()
 					updateCam()
 					syncDock()
+					scheduleDeferredRelayout()
 				else
 					dock.Visible = false
 				end
@@ -11858,6 +11886,7 @@ function Starlight:CreateWindow(WindowSettings)
 				updateCam()
 				if userWantsOpen and mw.Visible then
 					syncDock()
+					scheduleDeferredRelayout()
 				end
 			end,
 			Destroy = function()
