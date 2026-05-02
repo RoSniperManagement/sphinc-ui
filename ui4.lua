@@ -11157,9 +11157,41 @@ function Starlight:CreateWindow(WindowSettings)
 			return nil
 		end
 
-		local old = StarlightUI:FindFirstChild("__StarlightHitboxEditorDock")
-		if old then
-			old:Destroy()
+		local sgParent = StarlightUI.Parent
+		if sgParent then
+			local oldLayer = sgParent:FindFirstChild("__StarlightHitboxEditorLayer")
+			if oldLayer then
+				oldLayer:Destroy()
+			end
+		end
+		local oldDock = StarlightUI:FindFirstChild("__StarlightHitboxEditorDock")
+		if oldDock then
+			oldDock:Destroy()
+		end
+
+		-- Separate ScreenGui so in-asset overlays (PopupOverlay, ModalOverlay, loading dimmers) on StarlightUI cannot draw on top of the dock.
+		local editorLayer = Instance.new("ScreenGui")
+		editorLayer.Name = "__StarlightHitboxEditorLayer"
+		editorLayer.ResetOnSpawn = false
+		pcall(function()
+			editorLayer.IgnoreGuiInset = StarlightUI.IgnoreGuiInset
+		end)
+		pcall(function()
+			editorLayer.ZIndexBehavior = StarlightUI.ZIndexBehavior
+		end)
+		do
+			local baseDO = 0
+			pcall(function()
+				baseDO = StarlightUI.DisplayOrder
+			end)
+			editorLayer.DisplayOrder = (typeof(baseDO) == "number" and baseDO or 0) + 150
+		end
+		if sgParent then
+			editorLayer.Parent = sgParent
+		elseif gethui then
+			editorLayer.Parent = gethui()
+		else
+			editorLayer.Parent = game:GetService("CoreGui")
 		end
 
 		local r6 = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
@@ -11209,9 +11241,9 @@ function Starlight:CreateWindow(WindowSettings)
 		dock.Name = "__StarlightHitboxEditorDock"
 		dock.BorderSizePixel = 0
 		dock.ClipsDescendants = true
-		dock.ZIndex = 28
+		dock.ZIndex = 1
 		dock.Visible = false
-		dock.Parent = StarlightUI
+		dock.Parent = editorLayer
 
 		local dockStroke = Instance.new("UIStroke")
 		dockStroke.Thickness = 1
@@ -11902,7 +11934,7 @@ function Starlight:CreateWindow(WindowSettings)
 					end)
 				end
 				pcall(function()
-					dock:Destroy()
+					editorLayer:Destroy()
 				end)
 			end,
 		}
