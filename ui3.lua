@@ -29,6 +29,7 @@ Deity/dp4pv/x64x70/btg/j24 | Certain Scripting and Testing
 The Nebula Softworks Community | Bug Testers And Suggestions For The Project
 
 NOTES:
+This file is the canonical Glass/Starlight script source; some repos host it under other raw names (e.g. ui2.lua). Whatever URL scripts HttpGet must be this same file or newer, or added APIs (e.g. Window:CreateHitboxEditorPreview) will not exist at runtime.
 Starlight is a custom interface suite built from the ground up, meaning scripted and designed from scratch unlike Luna. If any other UIs look like Starlight,
 It is pure coincidence (Coming back after writing this, allusive looks like starlight a hella ton, and i didnt even know that lib existed :sob: so yea). 
 If you see our logo used anywhere else, please report it to us as I made this logo from scratch and i cannot fucking tolerate other shit
