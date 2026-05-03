@@ -3091,6 +3091,378 @@ function Starlight:Notification(data, _optionalIndex)
  end)
 end
 
+-- License gate: glass-style card, Worker /v1/auth + signed /v1/audit/success (see workers/license-auth + licensing/README.md).
+function Starlight:CreateLicenseGate(opts)
+	opts = opts or {}
+	local HttpService = game:GetService("HttpService")
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+	if not lp then
+		error("Starlight:CreateLicenseGate requires LocalPlayer")
+	end
+	local workerBase = type(opts.WorkerBase) == "string" and opts.WorkerBase:gsub("/+$", "") or ""
+	if workerBase == "" then
+		error("Starlight:CreateLicenseGate requires opts.WorkerBase (Worker URL, no trailing slash)")
+	end
+	local title = type(opts.Title) == "string" and opts.Title or "License"
+	local subtitle = type(opts.Subtitle) == "string" and opts.Subtitle or "Enter your key to continue."
+	local onSuccess = opts.OnSuccess
+	if type(onSuccess) ~= "function" then
+		error("Starlight:CreateLicenseGate requires opts.OnSuccess")
+	end
+	local maxAuthFailures = type(opts.MaxAuthFailures) == "number" and opts.MaxAuthFailures > 0 and opts.MaxAuthFailures or nil
+	local onLockout = type(opts.OnLockout) == "function" and opts.OnLockout or nil
+	local authFailCount = 0
+
+	local function getHwid()
+		if typeof(gethwid) == "function" then
+			local ok, h = pcall(gethwid)
+			if ok and type(h) == "string" then
+				local t = h:gsub("^%s+", ""):gsub("%s+$", "")
+				if t ~= "" then
+					return t
+				end
+			end
+		end
+		return nil
+	end
+
+	local function placeInfo()
+		return tostring(game.PlaceId), tostring(game.Name)
+	end
+
+	local function maskKey(key)
+		if type(key) ~= "string" or #key < 9 then
+			return "****"
+		end
+		return key:sub(1, 4) .. "..." .. key:sub(-4)
+	end
+
+	local function postJson(path, payload, auditBearer)
+		local url = workerBase .. path
+		local headers = { ["Content-Type"] = "application/json" }
+		if type(auditBearer) == "string" and auditBearer ~= "" then
+			headers["Authorization"] = "Bearer " .. auditBearer
+		end
+		return pcall(function()
+			return HttpService:RequestAsync({
+				Url = url,
+				Method = "POST",
+				Headers = headers,
+				Body = HttpService:JSONEncode(payload),
+			})
+		end)
+	end
+
+	local function auditAttempt(err, keyPreview)
+		task.defer(function()
+			local placeId, placeName = placeInfo()
+			local payload = {
+				error = tostring(err),
+				keyPreview = keyPreview or "—",
+				userId = lp.UserId,
+				username = lp.Name,
+				displayName = lp.DisplayName,
+				placeId = tonumber(placeId) or placeId,
+				placeName = placeName,
+				jobId = game.JobId,
+			}
+			postJson("/v1/audit/attempt", payload, nil)
+		end)
+	end
+
+	local function auditSuccess(licenseKey, auditToken)
+		task.defer(function()
+			local placeId, placeName = placeInfo()
+			local payload = {
+				licenseKey = licenseKey,
+				hwid = getHwid(),
+				userId = lp.UserId,
+				username = lp.Name,
+				displayName = lp.DisplayName,
+				placeId = tonumber(placeId) or placeId,
+				placeName = placeName,
+				jobId = game.JobId,
+			}
+			postJson("/v1/audit/success", payload, auditToken)
+		end)
+	end
+
+	local hw = getHwid()
+	if not hw then
+		error("Starlight:CreateLicenseGate requires executor gethwid()")
+	end
+
+	local huiParent = nil
+	if gethui then
+		local ok, h = pcall(gethui)
+		if ok and typeof(h) == "Instance" then
+			huiParent = h
+		end
+	end
+	if not huiParent then
+		huiParent = game:GetService("CoreGui")
+	end
+
+	local gateGui = Instance.new("ScreenGui")
+	gateGui.Name = "__StarlightLicenseGate"
+	gateGui.ResetOnSpawn = false
+	gateGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	pcall(function()
+		if StarlightUI and StarlightUI:IsA("ScreenGui") then
+			gateGui.DisplayOrder = (StarlightUI.DisplayOrder or 0) + 50
+		end
+	end)
+	gateGui.Parent = huiParent
+
+	local dim = Instance.new("Frame")
+	dim.Size = UDim2.fromScale(1, 1)
+	dim.BackgroundColor3 = Color3.new(0, 0, 0)
+	dim.BackgroundTransparency = 0.35
+	dim.BorderSizePixel = 0
+	dim.Parent = gateGui
+
+	local card = Instance.new("Frame")
+	card.Name = "Card"
+	card.Size = UDim2.fromOffset(400, 360)
+	card.AnchorPoint = Vector2.new(0.5, 0.5)
+	card.Position = UDim2.fromScale(0.5, 0.5)
+	card.BorderSizePixel = 0
+	card.Parent = dim
+	local cardCorner = Instance.new("UICorner")
+	cardCorner.CornerRadius = UDim.new(0, 14)
+	cardCorner.Parent = card
+	ThemeMethods.bindTheme(card, "BackgroundColor3", "Backgrounds.Dark")
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Thickness = 1
+	cardStroke.Parent = card
+	ThemeMethods.bindTheme(cardStroke, "Color", "Foregrounds.Dark")
+
+	local titleBar = Instance.new("Frame")
+	titleBar.Size = UDim2.new(1, 0, 0, 40)
+	titleBar.BorderSizePixel = 0
+	titleBar.Parent = card
+	ThemeMethods.bindTheme(titleBar, "BackgroundColor3", "Backgrounds.Medium")
+	local tbCorner = Instance.new("UICorner")
+	tbCorner.CornerRadius = UDim.new(0, 14)
+	tbCorner.Parent = titleBar
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Size = UDim2.new(1, -24, 1, 0)
+	titleLbl.Position = UDim2.new(0, 12, 0, 0)
+	titleLbl.Font = Enum.Font.GothamBold
+	titleLbl.TextSize = 15
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.Text = title
+	titleLbl.Parent = titleBar
+	ThemeMethods.bindTheme(titleLbl, "TextColor3", "Foregrounds.Light")
+
+	local avatar = Instance.new("ImageLabel")
+	avatar.Name = "Avatar"
+	avatar.BackgroundTransparency = 1
+	avatar.Size = UDim2.fromOffset(72, 72)
+	avatar.Position = UDim2.new(0, 20, 0, 54)
+	avatar.Image = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds="
+		.. lp.UserId
+		.. "&size=150x150&format=Png&isCircular=false"
+	avatar.Parent = card
+	local avCorner = Instance.new("UICorner")
+	avCorner.CornerRadius = UDim.new(1, 0)
+	avCorner.Parent = avatar
+
+	local nameLbl = Instance.new("TextLabel")
+	nameLbl.BackgroundTransparency = 1
+	nameLbl.Size = UDim2.new(1, -120, 0, 28)
+	nameLbl.Position = UDim2.new(0, 108, 0, 58)
+	nameLbl.Font = Enum.Font.GothamBold
+	nameLbl.TextSize = 16
+	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+	nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	nameLbl.Text = lp.DisplayName
+	nameLbl.Parent = card
+	ThemeMethods.bindTheme(nameLbl, "TextColor3", "Foregrounds.Light")
+
+	local userLbl = Instance.new("TextLabel")
+	userLbl.BackgroundTransparency = 1
+	userLbl.Size = UDim2.new(1, -120, 0, 22)
+	userLbl.Position = UDim2.new(0, 108, 0, 86)
+	userLbl.Font = Enum.Font.Gotham
+	userLbl.TextSize = 13
+	userLbl.TextXAlignment = Enum.TextXAlignment.Left
+	userLbl.Text = "@" .. lp.Name .. "  ·  " .. tostring(lp.UserId)
+	userLbl.Parent = card
+	ThemeMethods.bindTheme(userLbl, "TextColor3", "Foregrounds.Medium")
+
+	local subLbl = Instance.new("TextLabel")
+	subLbl.BackgroundTransparency = 1
+	subLbl.Size = UDim2.new(1, -40, 0, 36)
+	subLbl.Position = UDim2.new(0, 20, 0, 132)
+	subLbl.Font = Enum.Font.Gotham
+	subLbl.TextSize = 12
+	subLbl.TextWrapped = true
+	subLbl.TextXAlignment = Enum.TextXAlignment.Left
+	subLbl.TextYAlignment = Enum.TextYAlignment.Top
+	subLbl.Text = subtitle
+	subLbl.Parent = card
+	ThemeMethods.bindTheme(subLbl, "TextColor3", "Foregrounds.Medium")
+
+	local keyBox = Instance.new("TextBox")
+	keyBox.Name = "KeyInput"
+	keyBox.ClearTextOnFocus = false
+	keyBox.Size = UDim2.new(1, -40, 0, 40)
+	keyBox.Position = UDim2.new(0, 20, 0, 176)
+	keyBox.Font = Enum.Font.Code
+	keyBox.TextSize = 14
+	keyBox.TextXAlignment = Enum.TextXAlignment.Left
+	keyBox.PlaceholderText = "License key (48 hex)"
+	keyBox.Text = ""
+	keyBox.Parent = card
+	keyBox.BorderSizePixel = 0
+	local kbCorner = Instance.new("UICorner")
+	kbCorner.CornerRadius = UDim.new(0, 8)
+	kbCorner.Parent = keyBox
+	ThemeMethods.bindTheme(keyBox, "BackgroundColor3", "Backgrounds.Medium")
+	ThemeMethods.bindTheme(keyBox, "TextColor3", "Foregrounds.Light")
+	local kbPad = Instance.new("UIPadding")
+	kbPad.PaddingLeft = UDim.new(0, 10)
+	kbPad.PaddingRight = UDim.new(0, 10)
+	kbPad.Parent = keyBox
+
+	local statusLbl = Instance.new("TextLabel")
+	statusLbl.BackgroundTransparency = 1
+	statusLbl.Size = UDim2.new(1, -40, 0, 36)
+	statusLbl.Position = UDim2.new(0, 20, 0, 222)
+	statusLbl.Font = Enum.Font.GothamMedium
+	statusLbl.TextSize = 12
+	statusLbl.TextWrapped = true
+	statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+	statusLbl.TextYAlignment = Enum.TextYAlignment.Top
+	statusLbl.Text = ""
+	statusLbl.Parent = card
+	ThemeMethods.bindTheme(statusLbl, "TextColor3", "Foregrounds.Medium")
+
+	local submit = Instance.new("TextButton")
+	submit.Name = "Submit"
+	submit.Size = UDim2.new(1, -40, 0, 38)
+	submit.Position = UDim2.new(0, 20, 1, -52)
+	submit.Font = Enum.Font.GothamBold
+	submit.TextSize = 14
+	submit.Text = "Continue"
+	submit.AutoButtonColor = true
+	submit.BorderSizePixel = 0
+	submit.Parent = card
+	local sbCorner = Instance.new("UICorner")
+	sbCorner.CornerRadius = UDim.new(0, 8)
+	sbCorner.Parent = submit
+	ThemeMethods.bindTheme(submit, "BackgroundColor3", "Backgrounds.Highlight")
+	ThemeMethods.bindTheme(submit, "TextColor3", "Foregrounds.Light")
+
+	local busy = false
+	local function setStatus(t, isErr)
+		statusLbl.Text = t or ""
+		if isErr then
+			statusLbl.TextColor3 = Color3.fromRGB(255, 95, 95)
+		else
+			pcall(function()
+				statusLbl.TextColor3 = GetNestedValue(Starlight.CurrentTheme, "Foregrounds.Medium")
+			end)
+		end
+	end
+
+	local function trySubmit()
+		if busy then
+			return
+		end
+		busy = true
+		local rawKey = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", ""):lower()
+		if #rawKey < 8 then
+			setStatus("Enter your license key.", true)
+			busy = false
+			return
+		end
+		setStatus("Checking…", false)
+		PlayStarlightClickSound()
+		local ok, res = postJson("/v1/auth", { key = rawKey, hwid = hw }, nil)
+		if not ok or typeof(res) ~= "table" then
+			auditAttempt("request_failed", maskKey(rawKey))
+			setStatus("Network error. Allow HTTP requests to your Worker URL.", true)
+			busy = false
+			return
+		end
+		if not res.Success then
+			auditAttempt("http_" .. tostring(res.StatusCode), maskKey(rawKey))
+			setStatus("Server error (" .. tostring(res.StatusCode) .. ").", true)
+			busy = false
+			return
+		end
+		local data = nil
+		local okJ, decoded = pcall(function()
+			return HttpService:JSONDecode(res.Body)
+		end)
+		if okJ then
+			data = decoded
+		end
+		if type(data) ~= "table" then
+			auditAttempt("bad_json", maskKey(rawKey))
+			setStatus("Invalid response from license server.", true)
+			busy = false
+			return
+		end
+		if data.ok ~= true then
+			local err = tostring(data.error or "denied")
+			auditAttempt(err, maskKey(rawKey))
+			if err == "wrong_hwid" then
+				setStatus("HWID mismatch. Ask for a HWID reset.", true)
+			elseif err == "revoked" or err == "invalid_key" then
+				setStatus("Key invalid or revoked.", true)
+			elseif err == "rate_limited" then
+				setStatus("Too many attempts. Wait a minute.", true)
+			else
+				setStatus("Login failed: " .. err, true)
+			end
+			if maxAuthFailures then
+				authFailCount = authFailCount + 1
+				if authFailCount >= maxAuthFailures then
+					busy = false
+					pcall(function()
+						gateGui:Destroy()
+					end)
+					if onLockout then
+						onLockout()
+					else
+						error("Starlight:CreateLicenseGate — too many failed license attempts.")
+					end
+					return
+				end
+			end
+			busy = false
+			return
+		end
+		if type(data.auditToken) == "string" and data.auditToken ~= "" then
+			auditSuccess(rawKey, data.auditToken)
+		end
+		gateGui:Destroy()
+		onSuccess(rawKey, data)
+		busy = false
+	end
+
+	submit.MouseButton1Click:Connect(trySubmit)
+	keyBox.FocusLost:Connect(function(enter)
+		if enter then
+			trySubmit()
+		end
+	end)
+
+	return {
+		Destroy = function()
+			pcall(function()
+				gateGui:Destroy()
+			end)
+		end,
+		Gui = gateGui,
+	}
+end
+
 -- Create the Window
 function Starlight:CreateWindow(WindowSettings)
  -- The Options Table
@@ -12627,14 +12999,5 @@ if isStudio and enabled and not suppressDemo then
  Starlight:LoadAutoloadConfig()
 end --]=]0
 
---// ENDSECTION
-
---// SECTION : Protection of our work
---[[Starlight:Notification({
- Title = "Enjoying Starlight?",
- Content = "Thanks for using a script that uses our UI Library. Starlight is made with love, care and effort by Nebula Softworks And Nebula Softworks alone. No other developer or such entity. We are spreading this message as a skid who claims others work as their own, etheruit (a fake bitdancer - bitdancer._) on discord, is claiming Starlight as theirs. Help us protect our work by staying away from his lies. You can always find us at dsc.gg/nebulasoftworks.\nThank you ❤️",
- Duration = 10,
- Icon = 105789146907268,
-})]]
 
 return Starlight
