@@ -3153,12 +3153,17 @@ function Starlight:CreateLicenseGate(opts)
 		if type(auditBearer) == "string" and auditBearer ~= "" then
 			headers["Authorization"] = "Bearer " .. auditBearer
 		end
+		local bodyJson = HttpService:JSONEncode(payload)
+		-- License HTTP: executor request() only (Volt / Synapse-style); no HttpService RequestAsync fallback.
 		return pcall(function()
-			return HttpService:RequestAsync({
+			if not Request or type(Request) ~= "function" then
+				error("Starlight license gate: executor must expose request() or http_request for Worker HTTP.")
+			end
+			return Request({
 				Url = url,
 				Method = "POST",
 				Headers = headers,
-				Body = HttpService:JSONEncode(payload),
+				Body = bodyJson,
 			})
 		end)
 	end
@@ -3430,7 +3435,7 @@ function Starlight:CreateLicenseGate(opts)
 		local ok, res = postJson("/v1/auth", { key = rawKey, hwid = hw }, nil)
 		if not ok or typeof(res) ~= "table" then
 			auditAttempt("request_failed", maskKey(rawKey))
-			setStatus("Network error. Allow HTTP requests to your Worker URL.", true)
+			setStatus("Network error. Check Worker URL, VPN, or executor HTTP (request / HttpService).", true)
 			busy = false
 			return
 		end
