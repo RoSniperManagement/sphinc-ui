@@ -738,6 +738,12 @@ local Color = {}
 local Tween = {}
 setmetatable(Tween, {
  __call = function(self, object: Instance, goal: table, callback, tweenin)
+ if object == nil or typeof(object) ~= "Instance" then
+ if callback then
+ task.defer(callback)
+ end
+ return
+ end
  local tween = TweenService:Create(object, tweenin or Tween.Info(), goal)
  tween.Completed:Connect(callback or function() end)
  tween:Play()
@@ -2572,7 +2578,9 @@ local function makeDraggable(Bar, Window: Frame, dragBar, enableTaptic, tapticOf
  Tween(
  Window,
  { Position = newMainPosition },
- nil,
+ ((not dragBar) and function()
+ debounce = false
+ end) or nil,
  TweenInfo.new(0.35, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
  )
 
@@ -2591,7 +2599,7 @@ local function makeDraggable(Bar, Window: Frame, dragBar, enableTaptic, tapticOf
  end)
 
  Window:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
- if not debounce then
+ if not debounce and dragBar then
  local newMainPosition = UDim2.new(
  Window.Position.X.Scale,
  Window.Position.X.Offset,
@@ -3380,10 +3388,25 @@ function Starlight:CreateLicenseGate(opts)
 	end
 
 	local busy = false
+	local function licenseNotifyErr(msg)
+		local body = string.sub(tostring(msg), 1, 400)
+		pcall(function()
+			Starlight:Notification({
+				Title = title,
+				Content = body,
+				Duration = 6,
+				Icon = 129398364168201,
+			}, "LicenseGateErr_" .. tostring(os.clock()))
+		end)
+	end
+
 	local function setStatus(t, isErr)
 		statusLbl.Text = t or ""
 		if isErr then
 			statusLbl.TextColor3 = Color3.fromRGB(255, 95, 95)
+			if t and t ~= "" then
+				licenseNotifyErr(t)
+			end
 		else
 			pcall(function()
 				statusLbl.TextColor3 = GetNestedValue(Starlight.CurrentTheme, "Foregrounds.Medium")
