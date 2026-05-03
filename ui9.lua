@@ -3091,7 +3091,8 @@ function Starlight:Notification(data, _optionalIndex)
  end)
 end
 
--- License gate: glass-style card, Worker /v1/auth + signed /v1/audit/success (see workers/license-auth + licensing/README.md).
+-- License gate: same Starlight modal shell as PromptDialog (ModalOverlay + Template), draggable header, GetUserThumbnailAsync icon when opts.Icon is omitted.
+-- opts: WorkerBase, Title?, Subtitle?, OnSuccess, MaxAuthFailures?, OnLockout?, Icon? (rbxassetid string or asset number; if nil, uses live headshot).
 function Starlight:CreateLicenseGate(opts)
 	opts = opts or {}
 	local HttpService = game:GetService("HttpService")
@@ -3193,169 +3194,190 @@ function Starlight:CreateLicenseGate(opts)
 		error("Starlight:CreateLicenseGate requires executor gethwid()")
 	end
 
-	local huiParent = nil
-	if gethui then
-		local ok, h = pcall(gethui)
-		if ok and typeof(h) == "Instance" then
-			huiParent = h
-		end
-	end
-	if not huiParent then
-		huiParent = game:GetService("CoreGui")
+	local mainW = StarlightUI and StarlightUI:FindFirstChild("MainWindow")
+	local modalOverlay = mainW and mainW:FindFirstChild("ModalOverlay")
+	local modalTemplate = modalOverlay and modalOverlay:FindFirstChild("Template")
+	if not mainW or not modalOverlay or not modalTemplate then
+		error("Starlight:CreateLicenseGate requires Starlight MainWindow.ModalOverlay.Template (load library before calling).")
 	end
 
-	local gateGui = Instance.new("ScreenGui")
-	gateGui.Name = "__StarlightLicenseGate"
-	gateGui.ResetOnSpawn = false
-	gateGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	pcall(function()
-		if StarlightUI and StarlightUI:IsA("ScreenGui") then
-			gateGui.DisplayOrder = (StarlightUI.DisplayOrder or 0) + 50
+	-- Same shell as PromptDialog: Starlight ScreenGui + modal card (blur overlay), not a separate dimmed ScreenGui.
+	StarlightUI.Enabled = true
+	mainW.Visible = true
+	local chromeState = {}
+	for _, childName in ipairs({ "Sidebar", "Content", "New Loading Screen" }) do
+		local ch = mainW:FindFirstChild(childName)
+		if ch and ch:IsA("GuiObject") then
+			chromeState[childName] = ch.Visible
+			ch.Visible = false
 		end
-	end)
-	gateGui.Parent = huiParent
+	end
+	local starDrag = StarlightUI:FindFirstChild("Drag")
+	if starDrag and starDrag:IsA("GuiObject") then
+		chromeState.Drag = starDrag.Visible
+		starDrag.Visible = false
+	end
 
-	local dim = Instance.new("Frame")
-	dim.Size = UDim2.fromScale(1, 1)
-	dim.BackgroundColor3 = Color3.new(0, 0, 0)
-	dim.BackgroundTransparency = 0.35
-	dim.BorderSizePixel = 0
-	dim.Parent = gateGui
+	local function restoreChrome()
+		for name, was in pairs(chromeState) do
+			if name == "Drag" then
+				if starDrag and starDrag:IsA("GuiObject") then
+					starDrag.Visible = was
+				end
+			else
+				local ch = mainW:FindFirstChild(name)
+				if ch and ch:IsA("GuiObject") then
+					ch.Visible = was
+				end
+			end
+		end
+	end
 
-	local card = Instance.new("Frame")
-	card.Name = "Card"
-	card.Size = UDim2.fromOffset(400, 360)
-	card.AnchorPoint = Vector2.new(0.5, 0.5)
-	card.Position = UDim2.fromScale(0.5, 0.5)
-	card.BorderSizePixel = 0
-	card.Parent = dim
-	local cardCorner = Instance.new("UICorner")
-	cardCorner.CornerRadius = UDim.new(0, 14)
-	cardCorner.Parent = card
-	ThemeMethods.bindTheme(card, "BackgroundColor3", "Backgrounds.Dark")
-	local cardStroke = Instance.new("UIStroke")
-	cardStroke.Thickness = 1
-	cardStroke.Parent = card
-	ThemeMethods.bindTheme(cardStroke, "Color", "Foregrounds.Dark")
+	local licenseModal = modalTemplate:Clone()
+	licenseModal.Name = "StarlightLicenseGate"
 
-	local titleBar = Instance.new("Frame")
-	titleBar.Size = UDim2.new(1, 0, 0, 40)
-	titleBar.BorderSizePixel = 0
-	titleBar.Parent = card
-	ThemeMethods.bindTheme(titleBar, "BackgroundColor3", "Backgrounds.Medium")
-	local tbCorner = Instance.new("UICorner")
-	tbCorner.CornerRadius = UDim.new(0, 14)
-	tbCorner.Parent = titleBar
-	local titleLbl = Instance.new("TextLabel")
-	titleLbl.BackgroundTransparency = 1
-	titleLbl.Size = UDim2.new(1, -24, 1, 0)
-	titleLbl.Position = UDim2.new(0, 12, 0, 0)
-	titleLbl.Font = Enum.Font.GothamBold
-	titleLbl.TextSize = 15
-	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-	titleLbl.Text = title
-	titleLbl.Parent = titleBar
-	ThemeMethods.bindTheme(titleLbl, "TextColor3", "Foregrounds.Light")
+	local actions = licenseModal:WaitForChild("Holder"):WaitForChild("Actions")
+	for _, n in ipairs({ "Primary", "Secondary", "Input" }) do
+		local x = actions:FindFirstChild(n)
+		if x then
+			x:Destroy()
+		end
+	end
 
-	local avatar = Instance.new("ImageLabel")
-	avatar.Name = "Avatar"
-	avatar.BackgroundTransparency = 1
-	avatar.Size = UDim2.fromOffset(72, 72)
-	avatar.Position = UDim2.new(0, 20, 0, 54)
-	avatar.Image = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds="
-		.. lp.UserId
-		.. "&size=150x150&format=Png&isCircular=false"
-	avatar.Parent = card
-	local avCorner = Instance.new("UICorner")
-	avCorner.CornerRadius = UDim.new(1, 0)
-	avCorner.Parent = avatar
+	local submitBtn = modalTemplate.Holder.Actions.Primary:Clone()
+	ThemeMethods.bindTheme(submitBtn.Backdrop.Accent, "Color", "Accents.Main")
+	ThemeMethods.bindTheme(submitBtn.Backdrop.UIStroke.Accent, "Color", "Accents.Main")
+	ThemeMethods.bindTheme(submitBtn.Header.Icon, "ImageColor3", "Foregrounds.Active")
+	ThemeMethods.bindTheme(submitBtn.Header.Header, "TextColor3", "Foregrounds.Active")
+	submitBtn.Header.Header.Text = "Continue"
+	submitBtn.Header.Icon.Visible = false
+	submitBtn.Parent = actions
 
-	local nameLbl = Instance.new("TextLabel")
-	nameLbl.BackgroundTransparency = 1
-	nameLbl.Size = UDim2.new(1, -120, 0, 28)
-	nameLbl.Position = UDim2.new(0, 108, 0, 58)
-	nameLbl.Font = Enum.Font.GothamBold
-	nameLbl.TextSize = 16
-	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-	nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
-	nameLbl.Text = lp.DisplayName
-	nameLbl.Parent = card
-	ThemeMethods.bindTheme(nameLbl, "TextColor3", "Foregrounds.Light")
+	local keyRow = modalTemplate.Holder.Actions.Input:Clone()
+	ThemeMethods.bindTheme(keyRow, "BackgroundColor3", "Backgrounds.Dark")
+	ThemeMethods.bindTheme(keyRow.UIStroke, "Color", "Foregrounds.Dark")
+	ThemeMethods.bindTheme(keyRow.PART_Input, "PlaceholderColor3", "Foregrounds.Medium")
+	ThemeMethods.bindTheme(keyRow.PART_Input, "TextColor3", "Foregrounds.Light")
+	keyRow.Visible = true
+	keyRow.PART_Input.PlaceholderText = "License key (48 hex)"
+	keyRow.PART_Input.Text = ""
+	keyRow.PART_Input.ClearTextOnFocus = false
+	keyRow.PART_Input.MultiLine = false
+	keyRow.Parent = actions
 
-	local userLbl = Instance.new("TextLabel")
-	userLbl.BackgroundTransparency = 1
-	userLbl.Size = UDim2.new(1, -120, 0, 22)
-	userLbl.Position = UDim2.new(0, 108, 0, 86)
-	userLbl.Font = Enum.Font.Gotham
-	userLbl.TextSize = 13
-	userLbl.TextXAlignment = Enum.TextXAlignment.Left
-	userLbl.Text = "@" .. lp.Name .. "  ·  " .. tostring(lp.UserId)
-	userLbl.Parent = card
-	ThemeMethods.bindTheme(userLbl, "TextColor3", "Foregrounds.Medium")
+	local holder = licenseModal.Holder
+	local header = holder:WaitForChild("Header")
+	local headerTitle = header:WaitForChild("TextLabel")
+	local headerIcon = header:FindFirstChild("Icon")
+	headerTitle.Text = title
+	if headerIcon and headerIcon:IsA("ImageLabel") then
+		local customIcon = opts.Icon
+		if customIcon ~= nil and (typeof(customIcon) == "number" or (typeof(customIcon) == "string" and customIcon ~= "")) then
+			headerIcon.Visible = true
+			headerIcon.Image = typeof(customIcon) == "number" and ("rbxassetid://" .. tostring(customIcon)) or tostring(customIcon)
+			headerTitle.Position = UDim2.fromOffset(36, 0)
+		else
+			headerIcon.Visible = true
+			headerTitle.Position = UDim2.fromOffset(36, 0)
+			task.spawn(function()
+				local okThumb, url = pcall(function()
+					return Players:GetUserThumbnailAsync(
+						Player.UserId,
+						Enum.ThumbnailType.HeadShot,
+						Enum.ThumbnailSize.Size180x180
+					)
+				end)
+				if okThumb and type(url) == "string" and url ~= "" then
+					headerIcon.Image = url
+				end
+			end)
+		end
+	else
+		headerTitle.Position = UDim2.fromOffset(5, 0)
+	end
 
-	local subLbl = Instance.new("TextLabel")
-	subLbl.BackgroundTransparency = 1
-	subLbl.Size = UDim2.new(1, -40, 0, 36)
-	subLbl.Position = UDim2.new(0, 20, 0, 132)
-	subLbl.Font = Enum.Font.Gotham
-	subLbl.TextSize = 12
-	subLbl.TextWrapped = true
-	subLbl.TextXAlignment = Enum.TextXAlignment.Left
-	subLbl.TextYAlignment = Enum.TextYAlignment.Top
-	subLbl.Text = subtitle
-	subLbl.Parent = card
-	ThemeMethods.bindTheme(subLbl, "TextColor3", "Foregrounds.Medium")
-
-	local keyBox = Instance.new("TextBox")
-	keyBox.Name = "KeyInput"
-	keyBox.ClearTextOnFocus = false
-	keyBox.Size = UDim2.new(1, -40, 0, 40)
-	keyBox.Position = UDim2.new(0, 20, 0, 176)
-	keyBox.Font = Enum.Font.Code
-	keyBox.TextSize = 14
-	keyBox.TextXAlignment = Enum.TextXAlignment.Left
-	keyBox.PlaceholderText = "License key (48 hex)"
-	keyBox.Text = ""
-	keyBox.Parent = card
-	keyBox.BorderSizePixel = 0
-	local kbCorner = Instance.new("UICorner")
-	kbCorner.CornerRadius = UDim.new(0, 8)
-	kbCorner.Parent = keyBox
-	ThemeMethods.bindTheme(keyBox, "BackgroundColor3", "Backgrounds.Medium")
-	ThemeMethods.bindTheme(keyBox, "TextColor3", "Foregrounds.Light")
-	local kbPad = Instance.new("UIPadding")
-	kbPad.PaddingLeft = UDim.new(0, 10)
-	kbPad.PaddingRight = UDim.new(0, 10)
-	kbPad.Parent = keyBox
+	local contentFrame = holder:WaitForChild("Content")
+	local contentLbl = contentFrame:FindFirstChild("TextLabel") or contentFrame:FindFirstChildWhichIsA("TextLabel", true)
+	if contentLbl then
+		contentLbl.Text = subtitle
+	end
 
 	local statusLbl = Instance.new("TextLabel")
+	statusLbl.Name = "LicenseStatus"
 	statusLbl.BackgroundTransparency = 1
-	statusLbl.Size = UDim2.new(1, -40, 0, 36)
-	statusLbl.Position = UDim2.new(0, 20, 0, 222)
-	statusLbl.Font = Enum.Font.GothamMedium
+	statusLbl.Text = ""
 	statusLbl.TextSize = 12
 	statusLbl.TextWrapped = true
 	statusLbl.TextXAlignment = Enum.TextXAlignment.Left
 	statusLbl.TextYAlignment = Enum.TextYAlignment.Top
-	statusLbl.Text = ""
-	statusLbl.Parent = card
+	statusLbl.Size = UDim2.new(1, -20, 0, 36)
+	statusLbl.LayoutOrder = 2
+	statusLbl.Parent = contentFrame
 	ThemeMethods.bindTheme(statusLbl, "TextColor3", "Foregrounds.Medium")
 
-	local submit = Instance.new("TextButton")
-	submit.Name = "Submit"
-	submit.Size = UDim2.new(1, -40, 0, 38)
-	submit.Position = UDim2.new(0, 20, 1, -52)
-	submit.Font = Enum.Font.GothamBold
-	submit.TextSize = 14
-	submit.Text = "Continue"
-	submit.AutoButtonColor = true
-	submit.BorderSizePixel = 0
-	submit.Parent = card
-	local sbCorner = Instance.new("UICorner")
-	sbCorner.CornerRadius = UDim.new(0, 8)
-	sbCorner.Parent = submit
-	ThemeMethods.bindTheme(submit, "BackgroundColor3", "Backgrounds.Highlight")
-	ThemeMethods.bindTheme(submit, "TextColor3", "Foregrounds.Light")
+	ThemeMethods.bindTheme(licenseModal, "BackgroundColor3", "Miscellaneous.LighterShadow")
+	if licenseModal:FindFirstChild("UIStroke") then
+		ThemeMethods.bindTheme(licenseModal.UIStroke, "Color", "Foregrounds.Dark")
+	end
+	local dropShadowHolder = licenseModal:FindFirstChild("DropShadowHolder")
+	if dropShadowHolder then
+		for _, shadow in pairs(dropShadowHolder:GetChildren()) do
+			ThemeMethods.bindTheme(shadow, "ImageColor3", "Miscellaneous.LighterShadow")
+		end
+	end
+	local acrylicConn
+	acrylicConn = acrylicEvent.Event:Connect(function()
+		if mainAcrylic then
+			licenseModal.BackgroundTransparency = 0.7
+		else
+			licenseModal.BackgroundTransparency = 0.05
+		end
+	end)
+
+	repeat
+		task.wait()
+	until holder ~= nil
+	holder:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		pcall(function()
+			licenseModal.Size =
+				UDim2.fromOffset(400, holder and holder.AbsoluteSize.Y or 0)
+		end)
+	end)
+	licenseModal.Size = UDim2.fromOffset(400, holder.AbsoluteSize.Y)
+
+	Hide(licenseModal)
+	Tween(licenseModal.UIScale, { Scale = 1 })
+	Unhide(licenseModal)
+	task.wait(0.1)
+	modalOverlay.Visible = true
+	Tween(modalOverlay, { BackgroundTransparency = 0.2, ImageTransparency = 0.1 })
+	licenseModal.Parent = modalOverlay
+
+	makeDraggable(header, licenseModal, nil)
+
+	local closed = false
+	local function closeLicenseUI()
+		if closed then
+			return
+		end
+		closed = true
+		if acrylicConn then
+			acrylicConn:Disconnect()
+			acrylicConn = nil
+		end
+		pcall(function()
+			Tween(licenseModal.UIScale, { Scale = 1.25 })
+			Hide(licenseModal)
+		end)
+		Tween(modalOverlay, { BackgroundTransparency = 1, ImageTransparency = 1 }, function()
+			if licenseModal.Parent then
+				licenseModal:Destroy()
+			end
+		end)
+		task.wait(0.18)
+		modalOverlay.Visible = false
+		restoreChrome()
+	end
 
 	local busy = false
 	local function setStatus(t, isErr)
@@ -3374,7 +3396,7 @@ function Starlight:CreateLicenseGate(opts)
 			return
 		end
 		busy = true
-		local rawKey = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", ""):lower()
+		local rawKey = keyRow.PART_Input.Text:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", ""):lower()
 		if #rawKey < 8 then
 			setStatus("Enter your license key.", true)
 			busy = false
@@ -3424,9 +3446,7 @@ function Starlight:CreateLicenseGate(opts)
 				authFailCount = authFailCount + 1
 				if authFailCount >= maxAuthFailures then
 					busy = false
-					pcall(function()
-						gateGui:Destroy()
-					end)
+					closeLicenseUI()
 					if onLockout then
 						onLockout()
 					else
@@ -3441,25 +3461,37 @@ function Starlight:CreateLicenseGate(opts)
 		if type(data.auditToken) == "string" and data.auditToken ~= "" then
 			auditSuccess(rawKey, data.auditToken)
 		end
-		gateGui:Destroy()
+		closeLicenseUI()
 		onSuccess(rawKey, data)
 		busy = false
 	end
 
-	submit.MouseButton1Click:Connect(trySubmit)
-	keyBox.FocusLost:Connect(function(enter)
+	local submitInteract = submitBtn:FindFirstChild("Interact")
+	if submitInteract and submitInteract:IsA("GuiButton") then
+		submitInteract.MouseButton1Click:Connect(trySubmit)
+	else
+		submitBtn.MouseButton1Click:Connect(trySubmit)
+	end
+
+	keyRow.PART_Input.FocusLost:Connect(function(enter)
 		if enter then
 			trySubmit()
 		end
 	end)
 
+	local keyInteract = keyRow:FindFirstChild("Interact")
+	if keyInteract and keyInteract:IsA("GuiButton") then
+		keyInteract.Focused:Connect(function()
+			keyInteract:ReleaseFocus()
+			keyRow.PART_Input:CaptureFocus()
+		end)
+	end
+
 	return {
 		Destroy = function()
-			pcall(function()
-				gateGui:Destroy()
-			end)
+			closeLicenseUI()
 		end,
-		Gui = gateGui,
+		Gui = licenseModal,
 	}
 end
 
